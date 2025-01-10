@@ -23,12 +23,12 @@ window.addEventListener('DOMContentLoaded', event => {
     });
 
     // Initialize DynamoDB table by calling Lambda Function URL with the table name
-    fetch('https://uzywqt5ohu4zqvqctaczzqla3q0fsznx.lambda-url.us-east-1.on.aws/', {
+    fetch('INITIALIZE_FUNCTION_URL', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ tableName: "Visitor_Table_crc" })
+        body: JSON.stringify({ tableName: "DYNAMODB_TABLE_NAME" })
     })
         .then(response => {
             if (!response.ok) {
@@ -39,12 +39,12 @@ window.addEventListener('DOMContentLoaded', event => {
         .then(data => {
             console.log('DynamoDB initialization response:', data);
             // Fetch count value from Lambda Function and update the page
-            return fetch('https://iic4xns2dqlhiol3jjcxndeaey0pciuh.lambda-url.us-east-1.on.aws/', {
+            return fetch('LAMBDA_FUNCTION_URL', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ tableName: "Visitor_Table_crc" })
+                body: JSON.stringify({ tableName: "DYNAMODB_TABLE_NAME" })
             });
         })
         .then(response => {
@@ -61,4 +61,5 @@ window.addEventListener('DOMContentLoaded', event => {
             document.getElementById('count-value').textContent = 'Error loading count value';
         });
 });
+
 
