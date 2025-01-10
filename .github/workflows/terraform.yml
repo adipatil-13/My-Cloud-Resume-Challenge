@@ -1,0 +1,140 @@
+name: AWS Infrastructure Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v1
+      with:
+        terraform_version: 1.9.4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Terraform Init
+      working-directory: ./terraform
+      run: terraform init -upgrade
+
+    - name: Terraform Apply
+      working-directory: ./terraform
+      env:
+        TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      run: terraform apply -auto-approve
+
+    - name: Output Terraform JSON
+      working-directory: ./terraform
+      run: |
+        terraform output -json > terraform_output.json      
+
+    - name: Clean Up Terraform Output JSON
+      working-directory: ./terraform  
+      run: |
+          sed '/^::/d' terraform_output.json | sed '1d' > filtered_terraform_output.json
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}      
+
+    - name: Extract Terraform Outputs
+      id: extract_outputs
+      working-directory: ./terraform
+      run: |
+          if [ -f filtered_terraform_output.json ]; then
+            echo "filtered_terraform_output.json exists and its contents:"
+            cat filtered_terraform_output.json
+          
+            dynamodb_table_name=$(python3 -c "import json; import sys; print(json.load(sys.stdin)['dynamodb_table_name']['value'])" < filtered_terraform_output.json)
+            initialize_function_url=$(python3 -c "import json; import sys; print(json.load(sys.stdin)['initialize_dynamodb_url']['value'])" < filtered_terraform_output.json)
+            lambda_function_url=$(python3 -c "import json; import sys; print(json.load(sys.stdin)['lambda_function_url']['value'])" < filtered_terraform_output.json)
+            bucket_name=$(python3 -c "import json; import sys; print(json.load(sys.stdin)['bucket_name']['value'])" < filtered_terraform_output.json)
+            website_url=$(python3 -c "import json; import sys; print(json.load(sys.stdin)['website_url']['value'])" < filtered_terraform_output.json)
+            reset_function_url=$(python3 -c "import json; import sys; print(json.load(sys.stdin)['reset_function_url']['value'])" < filtered_terraform_output.json)
+
+            echo "DYNAMODB_TABLE_NAME=$dynamodb_table_name"
+            echo "INITIALIZE_FUNCTION_URL=$initialize_function_url"
+            echo "LAMBDA_FUNCTION_URL=$lambda_function_url"
+            echo "BUCKET_NAME=$bucket_name"
+            echo "WEBSITE_URL=$website_url"
+            echo "RESET_FUNCTION_URL=$reset_function_url"
+    
+  
+            echo "DYNAMODB_TABLE_NAME=$dynamodb_table_name" >> $GITHUB_ENV
+            echo "INITIALIZE_FUNCTION_URL=$initialize_function_url" >> $GITHUB_ENV
+            echo "LAMBDA_FUNCTION_URL=$lambda_function_url" >> $GITHUB_ENV
+            echo "BUCKET_NAME=$bucket_name" >> $GITHUB_ENV
+            echo "WEBSITE_URL=$website_url" >> $GITHUB_ENV
+            echo "RESET_FUNCTION_URL=$reset_function_url" >> $GITHUB_ENV
+
+
+          else
+            echo "terraform_output.json not found"
+            exit 1
+          fi
+
+    - name: Escape special characters
+      run: |
+            escape_sed() {
+              echo "$1" | sed 's/[&/\]/\\&/g'
+            }
+
+            lambda_function_url=$(escape_sed "${{ env.LAMBDA_FUNCTION_URL }}")
+            initialize_function_url=$(escape_sed "${{ env.INITIALIZE_FUNCTION_URL }}")
+            dynamodb_table_name=$(escape_sed "${{ env.DYNAMODB_TABLE_NAME }}")
+            bucket_name=$(escape_sed "${{ env.BUCKET_NAME }}")
+            website_url=$(escape_sed "${{ env.WEBSITE_URL }}")
+            reset_function_url=$(escape_sed "${{ env.RESET_FUNCTION_URL }}")
+            
+            echo "lambda_function_url=$lambda_function_url" >> $GITHUB_ENV
+            echo "initialize_function_url=$initialize_function_url" >> $GITHUB_ENV
+            echo "dynamodb_table_name=$dynamodb_table_name" >> $GITHUB_ENV
+            echo "bucket_name=$bucket_name" >> $GITHUB_ENV
+            echo "website_url=$website_url" >> $GITHUB_ENV
+            echo "reset_function_url=$reset_function_url" >> $GITHUB_ENV
+            
+
+      env:
+        LAMBDA_FUNCTION_URL: ${{ env.LAMBDA_FUNCTION_URL }}
+        INITIALIZE_FUNCTION_URL: ${{ env.INITIALIZE_FUNCTION_URL }}
+        DYNAMODB_TABLE_NAME: ${{ env.DYNAMODB_TABLE_NAME }}
+        BUCKET_NAME: ${{ env.BUCKET_NAME }}
+        WEBSITE_URL: ${{ env.WEBSITE_URL }}
+        RESET_FUNCTION_URL: ${{ env.RESET_FUNCTION_URL }}
+
+    - name: Debug Environment Variables
+      run: |
+          echo "BUCKET_NAME=${{ env.BUCKET_NAME }}"
+          echo "LAMBDA_FUNCTION_URL=${{ env.LAMBDA_FUNCTION_URL }}"
+          echo "INITIALIZE_FUNCTION_URL=${{ env.INITIALIZE_FUNCTION_URL }}"
+          echo "DYNAMODB_TABLE_NAME=${{ env.DYNAMODB_TABLE_NAME }}"
+          echo "RESET_FUNCTION_URL=${{ env.RESET_FUNCTION_URL }}"
+      env:
+          LAMBDA_FUNCTION_URL: ${{ env.LAMBDA_FUNCTION_URL }}
+          INITIALIZE_FUNCTION_URL: ${{ env.INITIALIZE_FUNCTION_URL }}
+          DYNAMODB_TABLE_NAME: ${{ env.DYNAMODB_TABLE_NAME }}
+          BUCKET_NAME: ${{ env.BUCKET_NAME }}
+          WEBSITE_URL: ${{ env.WEBSITE_URL }}
+          RESET_FUNCTION_URL: ${{ env.RESET_FUNCTION_URL }}
+
+    - name: Upload updated scripts.js to S3
+      if: ${{ env.LAMBDA_FUNCTION_URL && env.INITIALIZE_FUNCTION_URL && env.DYNAMODB_TABLE_NAME && env.BUCKET_NAME }}
+      run: |
+          aws s3 cp frontend/js/scripts.js s3://${{ env.BUCKET_NAME }}/js/scripts.js
+      env:
+          LAMBDA_FUNCTION_URL: ${{ env.LAMBDA_FUNCTION_URL }}
+          INITIALIZE_FUNCTION_URL: ${{ env.INITIALIZE_FUNCTION_URL }}
+          DYNAMODB_TABLE_NAME: ${{ env.DYNAMODB_TABLE_NAME }}
+          BUCKET_NAME: ${{ env.BUCKET_NAME }}
+          WEBSITE_URL: ${{ env.WEBSITE_URL }}
+          RESET_FUNCTION_URL: ${{ env.RESET_FUNCTION_URL }}
