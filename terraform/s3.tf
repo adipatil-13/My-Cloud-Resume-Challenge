@@ -2,6 +2,8 @@
 
 resource "aws_s3_bucket" "frontend_bucket" {
   bucket = var.bucket_name
+
+  force_destroy = true
 }
 
 resource "time_sleep" "wait_for_bucket" {
@@ -37,10 +39,10 @@ resource "aws_s3_object" "styles_css" {
   content_type = "text/css"
 }
 
-resource "aws_s3_object" "scripts_js" {
+resource "aws_s3_object" "script_js" {
   bucket       = aws_s3_bucket.frontend_bucket.bucket
-  key          = "js/scripts.js"
-  source       = "${path.module}/../frontend/js/scripts.js"
+  key          = "js/script.js"
+  source       = "${path.module}/../frontend/js/script.js"
   etag         = filemd5("${path.module}/../frontend/js/script.js")
   content_type = "application/javascript"
   depends_on   = [aws_lambda_function.frontend_lambda]
