@@ -18,7 +18,7 @@ resource "aws_cloudfront_distribution" "frontend_distribution" {
   comment             = "CloudFront distribution for frontend bucket"
   default_root_object = "index.html"
 
-  aliases = var.alternate_domain_names
+  aliases = ["adityapatil.click", "www.adityapatil.click"]
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
