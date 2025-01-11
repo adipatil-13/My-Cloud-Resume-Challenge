@@ -40,17 +40,10 @@ variable "state_name" {
   type        = string
 }
 
-
-
 variable "cloudflare_api_token" {
   description = "API token for Cloudflare"
   type        = string
   sensitive   = true
-}
-
-variable "alternate_domain_names" {
-  description = "List of alternate domain names for the CloudFront distribution"
-  type        = list(string)
 }
 
 variable "domain_name" {
